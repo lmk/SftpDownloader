@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os/exec"
 	"runtime"
+	"sync"
 	"time"
 )
 
@@ -66,11 +67,14 @@ func runServer() {
 	// 다운로드 view
 	http.HandleFunc("/download", func(w http.ResponseWriter, req *http.Request) {
 
+		// 이미 다운 중이면, 다운 중인 화면을 보여준다.
 		if state.State == downloading {
 			fmt.Println("alreay downloading.")
+			w.Write([]byte(HtmlDownload(fileList)))
 			return
 		}
 
+		// 다운로드 시작
 		config = Config{
 			Sftp: Sftp{
 				Ip:       req.PostFormValue("sftp-addr"),
@@ -93,13 +97,15 @@ func runServer() {
 		fileList.Save(ListFileName)
 
 		w.Write([]byte(HtmlDownload(fileList)))
+
+		go startDownload(&fileList)
 	})
 
 	// 상태 전송을 위한
 	http.HandleFunc("/downloading", func(w http.ResponseWriter, req *http.Request) {
 		w.Header().Add("Content-Type", "application/json")
 
-		w.Write([]byte(GetState()))
+		w.Write([]byte(getState()))
 	})
 
 	err := http.ListenAndServe(":"+AppPort, nil)
@@ -117,6 +123,31 @@ func waitListen(port string) bool {
 	return true
 }
 
-func GetStat() {
+func startDownload(list *FileList) {
 
+	state.State = downloading
+
+	var wait sync.WaitGroup
+
+	for i, _ := range list.Files {
+		wait.Add(1)
+
+		// ftp 서버의 파일
+		CheckFile(config, &list.Files[i])
+
+		go SftpDown(config, &list.Files[i])
+	}
+
+	wait.Wait()
+
+	state.State = done
+}
+
+func getState() string {
+
+	for _, file := range fileList.Files {
+
+	}
+
+	return ""
 }
