@@ -40,6 +40,7 @@ func (list *FileList) ToString() string {
 	return buf
 }
 
+// list의 FileInfo.path 값을 채운다.
 func (list *FileList) FromString(text string) error {
 
 	list.Files = []FileInfo{}
