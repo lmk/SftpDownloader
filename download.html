@@ -37,8 +37,26 @@
                 type: 'post',
                 url: 'http://localhost:%s/downloading',
                 success : function(result) {
+
+                    ch = ""
+                    per = result.localSize / remoteSize * 100
+                    if (per <= 0) {
+                        ch = '&#128347;'
+                    } else if (per <= 25) {
+                        ch = '&#128338;'
+                    } else if (per <= 50) {
+                        ch = '&#128341;'
+                    } else if (per <= 75) {
+                        ch = '&#128344;'
+                    } else {
+                        ch = '✔'
+                    }
                     
-                    $("#" + )
+                    $("#" + result.path).text = result.char
+
+                    if (result.stat == "done") {
+                        console.log("download done")
+                    }
                 },
                 error : function(xhr, status, message) {
                     console.log("error : "+message);

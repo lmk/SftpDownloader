@@ -1,31 +1,35 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"os"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
 
+type Status int
+
+const (
+	READY Status = iota
+	DOWNLOADING
+	DONE
+)
+
 type Config struct {
-	Sftp  Sftp  `yaml:"sftp.ip"`
-	Local Local `yaml:"local"`
+	Ip          string     `yaml:"sftp.ip,omitempty"`
+	Port        int        `yaml:"sftp.port,omitempty"`
+	Id          string     `yaml:"sftp.id,omitempty"`
+	Password    string     `yaml:"sftp.password,omitempty"`
+	LocalDir    string     `yaml:"local.directory,omitempty"`
+	RemoteFiles []FileInfo `yaml:"omitempty"`
+	LocalFiles  []FileInfo `yaml:"omitempty"`
+	State       Status     `yaml:"omitempty"`
 }
 
-type Sftp struct {
-	Ip       string `yaml:"ip"`
-	Port     int    `yaml:"port"`
-	Id       string `yaml:"id"`
-	Password string `yaml:"password"`
-}
-
-type Local struct {
-	Directory string `yaml:"directory"`
-}
-
-func (conf *Config) Load(fileName string) error {
-
-	conf = &Config{Sftp{Ip: "", Port: 22, Id: "", Password: ""}, Local{Directory: ""}}
+// Sftp 설정 파일을 읽는다.
+func (conf *Config) LoadSftp(fileName string) error {
 
 	buf, err := os.ReadFile(fileName)
 	if err != nil {
@@ -40,7 +44,8 @@ func (conf *Config) Load(fileName string) error {
 	return nil
 }
 
-func (conf *Config) Save(fileName string) error {
+// Sftp 설정 파일을 쓴다.
+func (conf *Config) SaveSftp(fileName string) error {
 
 	buf, err := yaml.Marshal(conf)
 	if err != nil {
@@ -53,4 +58,75 @@ func (conf *Config) Save(fileName string) error {
 	}
 
 	return nil
+}
+
+// 목록 파일을 읽는다.
+func (conf *Config) LoadRemoteFiles(fileName string) error {
+
+	f, err := os.Open(fileName)
+	if err != nil {
+		return fmt.Errorf("fail file open %s, err: %v", fileName, err)
+	}
+	defer f.Close()
+
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+
+		line := strings.Trim(scanner.Text(), " \t\r")
+
+		if len(line) == 0 || strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		conf.RemoteFiles = append(conf.RemoteFiles, FileInfo{path: line})
+	}
+
+	return nil
+}
+
+// 목록 파일을 쓴다.
+func (conf *Config) SaveRemoteFiles(fileName string) error {
+
+	buf := ""
+	for _, file := range conf.RemoteFiles {
+		buf += fmt.Sprintln("%s", file.path)
+	}
+
+	err := os.WriteFile(fileName, []byte(buf), 0660)
+	if err != nil {
+		return fmt.Errorf("cannot write list file %s, WriteFile: %v", fileName, err)
+	}
+
+	return nil
+}
+
+// 개행 문자로 파일 목록을 파싱한다.
+func (conf *Config) SetRemoteFiles(text string) {
+	slice := strings.Split(text, "\n")
+	for _, line := range slice {
+		line = strings.Trim(line, " \t\r")
+
+		if len(line) == 0 || strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		conf.RemoteFiles = append(conf.RemoteFiles, FileInfo{path: line})
+	}
+}
+
+// LocalHome = LocalDir + RemoteFiles 공통 경로의 한단계 상위 경로,
+// LocalFiles.path = LocalHome + 공통 경로를 제외한 RemoteFiles 경로
+func (conf *Config) SetLocalFiles() {
+
+	// 공통 경로
+	common := GetParentDir(conf.RemoteFiles[0].path)
+
+	for _, file := range conf.RemoteFiles {
+		common = GetSameDir(common, file.path)
+	}
+
+	for _, file := range conf.RemoteFiles {
+		path := conf.LocalDir + "/" + strings.TrimPrefix(file.path, common)
+		conf.LocalFiles = append(conf.LocalFiles, FileInfo{path: path})
+	}
 }

@@ -12,14 +12,14 @@ import (
 func SftpConn(config Config) (*sftp.Client, error) {
 
 	var auths []ssh.AuthMethod
-	auths = append(auths, ssh.Password(config.Sftp.Password))
+	auths = append(auths, ssh.Password(config.Password))
 
 	sshConfig := ssh.ClientConfig{
-		User: config.Sftp.Id,
+		User: config.Id,
 		Auth: auths,
 	}
 
-	addr := fmt.Sprintf("%s:%d", config.Sftp.Ip, config.Sftp.Port)
+	addr := fmt.Sprintf("%s:%d", config.Ip, config.Port)
 
 	conn, err := ssh.Dial("tcp", addr, &sshConfig)
 	if err != nil {
@@ -36,21 +36,29 @@ func SftpConn(config Config) (*sftp.Client, error) {
 	return sc, nil
 }
 
-func SftpDown(config Config, file *FileInfo) error {
+func SftpDown(config Config, remote string, local string) error {
 
+	fmt.Printf("download %s to %s\n", remote, local)
 	time.Sleep(10 * time.Second)
 
 	return nil
 }
 
-func CheckFile(config Config, file *FileInfo) error {
+func SftpGetFileInfo(config Config, file *FileInfo) error {
 
 	sc, err := SftpConn(config)
 	if err != nil {
-		return err
+		return fmt.Errorf("fail CheckFile %v, %v", config, err)
 	}
 
-	sc.ReadDir()
+	fi, err := sc.Stat(file.path)
+	if err != nil {
+		return fmt.Errorf("fail CheckFile %v, %v", file.path, err)
+	}
+
+	file.date = fi.ModTime().Format("2006-01-02 15:04:05")
+	file.size = fi.Size()
+	file.isExists = true
 
 	return nil
 }

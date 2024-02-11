@@ -22,7 +22,7 @@ func (list *FileList) Load(fileName string) error {
 
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
-		buf += scanner.Text()
+		buf += scanner.Text() + "\n"
 	}
 
 	list.FromString(buf)
@@ -41,21 +41,19 @@ func (list *FileList) ToString() string {
 }
 
 // list의 FileInfo.path 값을 채운다.
-func (list *FileList) FromString(text string) error {
-
-	list.Files = []FileInfo{}
+func (list *[]FileInfo) FromString(text string) error {
 
 	lines := strings.Split(text, "\n")
 
 	for _, line := range lines {
-		line = strings.Trim(line, " \t")
+		line = strings.Trim(line, " \t\r")
 
 		// 주석 & 빈줄 처리
 		if len(line) == 0 || strings.HasPrefix(line, "#") {
 			continue
 		}
 
-		list.Files = append(list.Files, FileInfo{path: line})
+		list = append(list, FileInfo{path: line})
 	}
 
 	return nil

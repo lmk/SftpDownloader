@@ -1,3 +1,6 @@
+/*
+별도의 html 파일 없이 실행 파일에 포함하기 위한 코드
+*/
 package main
 
 import "fmt"
@@ -25,30 +28,30 @@ const HTML_ROOT = `
 				<div class="row mb-1">
 					<div class="input-group col-md-6 mb-3">
 						<label class="input-group-text" for="sftp-addr">IP Address</label>
-						<input type="text" class="form-control" id="sftp-addr" placeholder="" value="%s" required>
+						<input type="text" class="form-control" name="sftp-addr" placeholder="" value="%s" required>
 					</div>
 				</div>
 				<div class="row mb-3">
 					<div class="input-group col-md-3 mb-3">
 						<label class="input-group-text" for="sftp-id">ID</label>
-						<input type="text" class="form-control" id="sftp-id" placeholder="" value="%s" required>
+						<input type="text" class="form-control" name="sftp-id" placeholder="" value="%s" required>
 					</div>
 					<div class="input-group col-md-3 mb-3">
 						<label class="input-group-text" for="sftp-pwd">Password</label>
-						<input type="text" class="form-control" id="sftp-pwd" placeholder="" value="%s" required>
+						<input type="text" class="form-control" name="sftp-pwd" placeholder="" value="%s" required>
 					</div>
 				</div>
 				<h4 class="mb-3">Local</h4>
 				<div class="row mb-3">
 					<div class="input-group col-md-12 mb-3">
 						<label class="input-group-text" for="local-dir">Local Directory</label>
-						<input type="text" class="form-control" id="local-dir" placeholder="" value="%s" required>
+						<input type="text" class="form-control" name="local-dir" placeholder="" value="%s" required>
 					</div>
 				</div>
 				<h4 class="mb-3">File List</h4>
 				<div class="row mb-3">
 					<div class="col-md-12">
-						<textarea class="col-md-12" rows="10" id="file-list" placeholder="File List...">%s</textarea>
+						<textarea class="col-md-12" rows="10" name="file-list" placeholder="File List...">%s</textarea>
 					</div>
 				</div>
 				<hr class="mb-3">
@@ -94,6 +97,42 @@ const HTML_DOWNLOAD = `
                 </table>
         </div>
     </div>
+	<script>
+		var x = setInterval(function() {
+			$.ajax({
+				type: 'post',
+				url: 'http://localhost:%s/downloading',
+				success : function(result) {
+
+					ch = ""
+					per = result.localSize / remoteSize * 100
+					if (per <= 0) {
+						ch = '&#128347;'
+					} else if (per <= 25) {
+						ch = '&#128338;'
+					} else if (per <= 50) {
+						ch = '&#128341;'
+					} else if (per <= 75) {
+						ch = '&#128344;'
+					} else {
+						ch = '✔'
+					}
+					
+					$("#" + result.path).text = result.char
+
+					if (result.stat == "done") {
+						console.log("download done")
+					}
+				},
+				error : function(xhr, status, message) {
+					console.log("error : "+message);
+				}
+			})
+			if ( true ) {
+				clearInterval(x)
+			}
+		}, 1000);
+	</script>
 </body>
 </html>
 `
@@ -108,19 +147,35 @@ const HTML_DOWNLOAD_ROW = `
 </tr>
 `
 
-func HtmlRoot(config Config, fileList FileList) string {
+func HtmlRoot() string {
 	return fmt.Sprintf(HTML_ROOT,
-		config.Sftp.Ip,
-		config.Sftp.Id,
-		config.Sftp.Password,
-		config.Local.Directory,
-		fileList.ToString())
+		cfg.Ip,
+		cfg.Id,
+		cfg.Password,
+		cfg.LocalDir,
+		FilesPathToString(cfg.RemoteFiles))
 }
 
-func HtmlDownload(fileList FileList) string {
+func HtmlDownload() string {
 
 	html := ""
-	for i, file := range fileList.Files {
+	for i, file := range cfg.RemoteFiles {
+		if file.isExists {
+			html += fmt.Sprintf(HTML_DOWNLOAD_ROW, i+1, file.path, "✔", file.path, file.date, HumanSize(float64(file.size)))
+		} else {
+			html += fmt.Sprintf(HTML_DOWNLOAD_ROW, i+1, file.path, "❌", file.path, file.date, HumanSize(float64(file.size)))
+		}
+
+	}
+
+	return fmt.Sprintf(HTML_DOWNLOAD, html)
+}
+
+func HtmlDownloading() string {
+
+	html := ""
+	for i, file := range cfg.LocalFiles {
+
 		if file.isExists {
 			html += fmt.Sprintf(HTML_DOWNLOAD_ROW, i+1, file.path, "✔", file.path, file.date, HumanSize(float64(file.size)))
 		} else {

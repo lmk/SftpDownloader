@@ -9,13 +9,19 @@
     <title>Package Downloader</title>
 </head>
 <body class="bg-light">
+    <form method="POST" action="http://localhost:8888/download">     
+        <label>Name</label><input name="name" type="text" value="" />
+        <label>Address</label><input name="address" type="text" value="" />
+        <input type="submit" value="submit" />
+    </form>
     <div class="container">
         <div class="py-5 text-center">
             <h2>Package Downloader</h2>
             <p class="lead">경로를 유지하고 파일 전체를 다운로드 받습니다</p>
         </div>
         <div class="col-md-12">
-            <form action="/download" method="post">
+            <form action="http://localhost:8888/download" method="POST">
+                <input type="text" name="aabbbcccc" value="bbbbbb">
                 <h4 class="mb-3">SFTP Server</h4>
                 <div class="row mb-1">
                     <div class="input-group col-md-6 mb-3">
