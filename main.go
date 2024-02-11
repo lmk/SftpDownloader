@@ -10,10 +10,7 @@ import (
 	"time"
 )
 
-var config Config
-var fileList FileList
-
-var state State
+var cfg Config
 
 const (
 	AppPort        = "8888"
@@ -23,7 +20,11 @@ const (
 
 func main() {
 
-	state = State{State: ready}
+	cfg = Config{
+		State:       READY,
+		RemoteFiles: []FileInfo{},
+		LocalFiles:  []FileInfo{},
+	}
 
 	go runServer()
 
@@ -36,6 +37,7 @@ func main() {
 	}
 }
 
+// 웹브라우져를 열어서 UI를 띄운다.
 func openBrowser(url string) bool {
 	var args []string
 	switch runtime.GOOS {
@@ -55,50 +57,62 @@ func runServer() {
 	// 첫 페이지
 	http.HandleFunc("/", func(w http.ResponseWriter, req *http.Request) {
 
+		// 이미 다운 중이면, 다운 중인 화면을 보여준다.
+		if cfg.State == DOWNLOADING {
+			fmt.Println("alreay downloading.")
+			w.Write([]byte(HtmlDownload()))
+			return
+		}
+
 		// read yaml
-		config.Load(ConfigFileName)
+		cfg.LoadSftp(ConfigFileName)
 
-		// read pkg list
-		fileList.Load(ListFileName)
+		// read files list
+		cfg.LoadRemoteFiles(ListFileName)
 
-		w.Write([]byte(HtmlRoot(config, fileList)))
+		w.Write([]byte(HtmlRoot()))
 	})
 
 	// 다운로드 view
 	http.HandleFunc("/download", func(w http.ResponseWriter, req *http.Request) {
 
 		// 이미 다운 중이면, 다운 중인 화면을 보여준다.
-		if state.State == downloading {
+		if cfg.State == DOWNLOADING {
 			fmt.Println("alreay downloading.")
-			w.Write([]byte(HtmlDownload(fileList)))
+			w.Write([]byte(HtmlDownload()))
 			return
 		}
 
-		// 다운로드 시작
-		config = Config{
-			Sftp: Sftp{
-				Ip:       req.PostFormValue("sftp-addr"),
-				Id:       req.PostFormValue("sftp-id"),
-				Password: req.PostFormValue("sftp-pwd"),
-			},
-			Local: Local{
-				Directory: req.PostFormValue("local-dir"),
-			},
+		err := req.ParseForm()
+		if err != nil {
+			fmt.Printf("req ParseForm %v\n", err)
 		}
 
-		fileList = FileList{
-			Files: []FileInfo{},
+		fmt.Println(req.Form)
+
+		// 설정 읽기
+		cfg = Config{
+			Ip:          req.PostFormValue("sftp-addr"),
+			Id:          req.PostFormValue("sftp-id"),
+			Password:    req.PostFormValue("sftp-pwd"),
+			LocalDir:    req.PostFormValue("local-dir"),
+			RemoteFiles: []FileInfo{},
+			State:       READY,
 		}
 
-		fileList.FromString(req.PostFormValue("file-list"))
+		cfg.SetRemoteFiles(req.PostFormValue("file-list"))
 
-		config.Save(ConfigFileName)
+		// 설정 저장
+		cfg.SaveSftp(ConfigFileName)
 
-		fileList.Save(ListFileName)
+		cfg.SaveRemoteFiles(ListFileName)
 
-		w.Write([]byte(HtmlDownload(fileList)))
+		// local dir 계산
+		cfg.SetLocalFiles()
 
-		go startDownload(&fileList)
+		w.Write([]byte(HtmlDownload()))
+
+		go startDownload()
 	})
 
 	// 상태 전송을 위한
@@ -114,6 +128,7 @@ func runServer() {
 	}
 }
 
+// port 가 listen 상태가 될때까지 대기한다
 func waitListen(port string) bool {
 	conn, err := net.DialTimeout("tcp", "localhost:"+port, 60*time.Second)
 	if err != nil {
@@ -123,24 +138,27 @@ func waitListen(port string) bool {
 	return true
 }
 
-func startDownload(list *FileList) {
+func startDownload() {
 
-	state.State = downloading
+	cfg.State = DOWNLOADING
 
 	var wait sync.WaitGroup
 
-	for i, _ := range list.Files {
+	for i := range cfg.RemoteFiles {
 		wait.Add(1)
 
 		// ftp 서버의 파일
-		CheckFile(config, &list.Files[i])
+		err := SftpGetFileInfo(cfg, &cfg.RemoteFiles[i])
+		if err != nil {
+			fmt.Println(err)
+		}
 
-		go SftpDown(config, &list.Files[i])
+		go SftpDown(cfg, cfg.RemoteFiles[i].path, cfg.LocalFiles[i].path)
 	}
 
 	wait.Wait()
 
-	state.State = done
+	cfg.State = DONE
 }
 
 func getState() string {

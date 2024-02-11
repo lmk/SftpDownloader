@@ -13,7 +13,6 @@ type FileInfo struct {
 	size     int64  `json:"size,omitempty"`
 	date     string `json:"date,omitempty"`
 	path     string `json:"path,omitempty"`
-	doing    int    `json:"doing,omitempty"` // 다운로드 진행률
 }
 
 // TheFileInfo 파일 정보를 읽는다.
@@ -35,7 +34,7 @@ func TheFileInfo(f string) FileInfo {
 	return fi
 }
 
-func (f *FileInfo) ToString() string {
+func (f *FileInfo) ExistToString() string {
 
 	OX := "X"
 	if f.isExists {
@@ -53,4 +52,14 @@ func (f *FileInfo) MarshalJSON() ([]byte, error) {
 	}
 
 	return data, nil
+}
+
+func FilesPathToString(list []FileInfo) string {
+
+	buf := ""
+	for _, f := range list {
+		buf += fmt.Sprintln(f.path)
+	}
+
+	return buf
 }
