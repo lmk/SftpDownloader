@@ -23,9 +23,9 @@ type Config struct {
 	Id          string     `yaml:"sftp.id,omitempty"`
 	Password    string     `yaml:"sftp.password,omitempty"`
 	LocalDir    string     `yaml:"local.directory,omitempty"`
-	RemoteFiles []FileInfo `yaml:"omitempty"`
-	LocalFiles  []FileInfo `yaml:"omitempty"`
-	State       Status     `yaml:"omitempty"`
+	RemoteFiles []FileInfo `yaml:"-"`
+	LocalFiles  []FileInfo `yaml:"-"`
+	State       Status     `yaml:"-"`
 }
 
 // Sftp 설정 파일을 읽는다.
@@ -39,6 +39,10 @@ func (conf *Config) LoadSftp(fileName string) error {
 	err = yaml.Unmarshal(buf, conf)
 	if err != nil {
 		return fmt.Errorf("invaild config file %s, Unmarshal: %v", fileName, err)
+	}
+
+	if conf.Port == 0 {
+		conf.Port = 22
 	}
 
 	return nil
@@ -89,7 +93,7 @@ func (conf *Config) SaveRemoteFiles(fileName string) error {
 
 	buf := ""
 	for _, file := range conf.RemoteFiles {
-		buf += fmt.Sprintln("%s", file.path)
+		buf += fmt.Sprintln(file.path)
 	}
 
 	err := os.WriteFile(fileName, []byte(buf), 0660)
