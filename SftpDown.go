@@ -9,33 +9,6 @@ import (
 	"github.com/pkg/sftp"
 )
 
-func SftpConn(config Config) (*sftp.Client, error) {
-
-	var auths []ssh.AuthMethod
-	auths = append(auths, ssh.Password(config.Password))
-
-	sshConfig := ssh.ClientConfig{
-		User: config.Id,
-		Auth: auths,
-	}
-
-	addr := fmt.Sprintf("%s:%d", config.Ip, config.Port)
-
-	conn, err := ssh.Dial("tcp", addr, &sshConfig)
-	if err != nil {
-		return nil, fmt.Errorf("Failed to connecto to [%s]: %v\n", addr, err)
-	}
-	defer conn.Close()
-
-	sc, err := sftp.NewClient(conn)
-	if err != nil {
-		return nil, fmt.Errorf("Unable to start SFTP subsystem: %v\n", err)
-	}
-	defer sc.Close()
-
-	return sc, nil
-}
-
 func SftpDown(config Config, remote string, local string) error {
 
 	fmt.Printf("download %s to %s\n", remote, local)
@@ -44,21 +17,38 @@ func SftpDown(config Config, remote string, local string) error {
 	return nil
 }
 
-func SftpGetFileInfo(config Config, file *FileInfo) error {
+// get sftp remote file info
+func SftpGetFileInfo(config Config, path string) (string, int64, error) {
 
-	sc, err := SftpConn(config)
-	if err != nil {
-		return fmt.Errorf("fail CheckFile %v, %v", config, err)
+	var auths []ssh.AuthMethod
+	auths = append(auths, ssh.Password(config.Password))
+
+	addr := fmt.Sprintf("%s:%d", config.Ip, config.Port)
+
+	sshConfig := ssh.ClientConfig{
+		User:            config.Id,
+		Auth:            auths,
+		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
 	}
 
-	fi, err := sc.Stat(file.path)
+	conn, err := ssh.Dial("tcp", addr, &sshConfig)
 	if err != nil {
-		return fmt.Errorf("fail CheckFile %v, %v", file.path, err)
+		return "", 0, fmt.Errorf("fail to connect to [%s]: %v", addr, err)
+	}
+	defer conn.Close()
+
+	sc, err := sftp.NewClient(conn)
+	if err != nil {
+		return "", 0, fmt.Errorf("unable to start SFTP subsystem: %v", err)
+	}
+	defer sc.Close()
+
+	fi, err := sc.Stat(path)
+	if err != nil {
+		return "", 0, fmt.Errorf("fail SftpGetFileInfo %v, %v", path, err)
 	}
 
-	file.date = fi.ModTime().Format("2006-01-02 15:04:05")
-	file.size = fi.Size()
-	file.isExists = true
-
-	return nil
+	return fi.ModTime().Format("2006-01-02 15:04:05"),
+		fi.Size(),
+		nil
 }
