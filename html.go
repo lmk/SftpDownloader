@@ -97,36 +97,96 @@ const HTML_DOWNLOAD = `
                 </table>
         </div>
     </div>
+	<style>
+		td.path {
+			position: relative;
+		}
+		td.path div.progress{
+			position: absolute;
+			top: 0;
+			left: 0;
+			width: 0%%;
+			height: 100%%;
+			background-color: lightblue;
+			z-index: -1;
+		}
+	</style>
 	<script>
+		function humanFileSize(bytes, si=false, dp=1) {
+			const thresh = si ? 1000 : 1024;
+		
+			if (Math.abs(bytes) < thresh) {
+			return bytes + ' B';
+			}
+		
+			const units = si 
+			? ['kB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'] 
+			: ['KiB', 'MiB', 'GiB', 'TiB', 'PiB', 'EiB', 'ZiB', 'YiB'];
+			let u = -1;
+			const r = 10**dp;
+		
+			do {
+			bytes /= thresh;
+			++u;
+			} while (Math.round(Math.abs(bytes) * r) / r >= thresh && u < units.length - 1);
+		
+		
+			return bytes.toFixed(dp) + ' ' + units[u];
+		}
+
+
 		var x = setInterval(function() {
 			$.ajax({
 				type: 'post',
 				url: 'http://localhost:%s/downloading',
 				success : function(result) {
 
+					result.files.forEach((file, index)=>{
+
+						clocks = ["🕛", "🕐","🕑","🕒","🕓","🕔","🕕","🕖","🕗","🕘", "🕙", "🕚" ]
+			
+						if (typeof file.notify == "undefined") {
+							ch = ""
+							idx = file.localSize / file.remoteSize * (clocks.length-1)
+							per = Math.round(file.localSize / file.remoteSize * 100)
+			
+							if (isNaN(idx)) {
+								ch = clocks[0]
+							} else if (file.remoteSize == 0) {
+								ch = '❌'
+							} else if (file.localSize == file.remoteSize) {
+								ch = '✔'
+							} else {
+								ch = clocks[Math.round(idx)]
+							}
+			
+							$('[id="'+file.path+'"]').children('td[name="stat"]').text(ch)
+							$('[id="'+file.path+'"]').children('td[name="date"]').text(file.date)
+							$('[id="'+file.path+'"]').children('td[name="size"]').text(humanFileSize(file.localSize))
+			
+							if (file.localSize == file.remoteSize) {
+								$('[id="'+file.path+'"]').children('td[name="path"]').children(".progress").css("width", "0%%")
+							} else {
+								$('[id="'+file.path+'"]').children('td[name="path"]').children(".progress").css("width", Math.round(file.localSize / file.remoteSize * 100) + "%%")
+							}
+			
+						} else {
+							obj = $('[id="'+file.path+'"]').children('td[name="path"]').children(".text-danger")
+			
+							if (obj.length == 0) {
+								html = '<div class="text-danger">'+file.notify+'</div>'
+								$('[id="'+file.path+'"]').children('td[name="path"]').append(html)
+							} else {
+								$(obj).children("div").text(file.notify)
+							}
+						}
+					})
+
 					if (result.stat != "DOWNLOADING") {
-						console.log(result)
 						clearInterval(x)
 						return
 					} 
 
-					$.Each(result.files, function(index, el){
-						ch = ""
-						per = el.localSize / el.remoteSize * 100
-						if (per <= 0) {
-							ch = '&#128347;'
-						} else if (per <= 25) {
-							ch = '&#128338;'
-						} else if (per <= 50) {
-							ch = '&#128341;'
-						} else if (per <= 75) {
-							ch = '&#128344;'
-						} else {
-							ch = '✔'
-						}
-						
-						$("#" + el.path).text = ch
-					})
 				},
 				error : function(xhr, status, message) {
 					clearInterval(x)
@@ -134,22 +194,19 @@ const HTML_DOWNLOAD = `
 					window.open('','_self').close(); 
 				}
 			})
-			if ( true ) {
-				clearInterval(x)
-			}
-		}, 1000);
+		}, 100);
 	</script>
 </body>
 </html>
 `
 
 const HTML_DOWNLOAD_ROW = `
-<tr>
+<tr id="%s">
 	<th scope="row">%d</th>
-	<td><div id="%s">%s</div></td>
-	<td>%s</td>
-	<td>%s</td>
-	<td>%s</td>
+	<td name="stat">%s</td>
+	<td name="path" class="path"><div class="progress"></div><div>%s</div></td>
+	<td name="date">%s</td>
+	<td name="size">0B</td>
 </tr>
 `
 
@@ -168,25 +225,9 @@ func HtmlDownload() string {
 	html := ""
 	for i, file := range cfg.RemoteFiles {
 		if file.isExists {
-			html += fmt.Sprintf(HTML_DOWNLOAD_ROW, i+1, file.path, "✔", file.path, file.date, HumanSize(float64(file.size)))
+			html += fmt.Sprintf(HTML_DOWNLOAD_ROW, file.path, i+1, "✔", file.path, file.date)
 		} else {
-			html += fmt.Sprintf(HTML_DOWNLOAD_ROW, i+1, file.path, "❌", file.path, file.date, HumanSize(float64(file.size)))
-		}
-
-	}
-
-	return fmt.Sprintf(HTML_DOWNLOAD, html, AppPort)
-}
-
-func HtmlDownloading() string {
-
-	html := ""
-	for i, file := range cfg.LocalFiles {
-
-		if file.isExists {
-			html += fmt.Sprintf(HTML_DOWNLOAD_ROW, i+1, file.path, "✔", file.path, file.date, HumanSize(float64(file.size)))
-		} else {
-			html += fmt.Sprintf(HTML_DOWNLOAD_ROW, i+1, file.path, "❌", file.path, file.date, HumanSize(float64(file.size)))
+			html += fmt.Sprintf(HTML_DOWNLOAD_ROW, file.path, i+1, "❌", file.path, file.date)
 		}
 
 	}
