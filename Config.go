@@ -56,7 +56,13 @@ func (conf *Config) SaveSftp(fileName string) error {
 		return fmt.Errorf("fail marshal config %v, Marshal: %v", conf, err)
 	}
 
-	err = os.WriteFile(fileName, buf, 0660)
+	file, err := os.OpenFile(fileName, os.O_CREATE|os.O_RDWR|os.O_TRUNC, os.FileMode(0644))
+	if err != nil {
+		return fmt.Errorf("cannot open config file %s, WriteFile: %v", fileName, err)
+	}
+	defer file.Close()
+
+	_, err = file.Write(buf)
 	if err != nil {
 		return fmt.Errorf("cannot write config file %s, WriteFile: %v", fileName, err)
 	}
@@ -91,12 +97,18 @@ func (conf *Config) LoadRemoteFiles(fileName string) error {
 // 목록 파일을 쓴다.
 func (conf *Config) SaveRemoteFiles(fileName string) error {
 
+	file, err := os.OpenFile(fileName, os.O_CREATE|os.O_RDWR|os.O_TRUNC, os.FileMode(0644))
+	if err != nil {
+		return fmt.Errorf("cannot open list file %s, WriteFile: %v", fileName, err)
+	}
+	defer file.Close()
+
 	buf := ""
 	for _, file := range conf.RemoteFiles {
 		buf += fmt.Sprintln(file.path)
 	}
 
-	err := os.WriteFile(fileName, []byte(buf), 0660)
+	_, err = file.Write([]byte(buf))
 	if err != nil {
 		return fmt.Errorf("cannot write list file %s, WriteFile: %v", fileName, err)
 	}
@@ -123,7 +135,7 @@ func (conf *Config) SetRemoteFiles(text string) {
 func (conf *Config) SetLocalFiles() {
 
 	// 공통 경로
-	common := GetParentDir(conf.RemoteFiles[0].path)
+	common := GetParentDir(conf.RemoteFiles[0].path, "/")
 
 	for _, file := range conf.RemoteFiles {
 		common = GetSameDir(common, file.path)
@@ -131,6 +143,10 @@ func (conf *Config) SetLocalFiles() {
 
 	for _, file := range conf.RemoteFiles {
 		path := conf.LocalDir + "/" + strings.TrimPrefix(file.path, common)
+
+		// local 디렉토리 구분자로 변경
+		path = strings.ReplaceAll(path, "/", string(os.PathSeparator))
+
 		conf.LocalFiles = append(conf.LocalFiles, FileInfo{path: path})
 	}
 }

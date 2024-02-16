@@ -1,7 +1,7 @@
 package main
 
 import (
-	"fmt"
+	"log"
 	"net"
 	"net/http"
 	"os"
@@ -59,11 +59,11 @@ func runServer() {
 	// 첫 페이지
 	http.HandleFunc("/", func(w http.ResponseWriter, req *http.Request) {
 
-		fmt.Println("HandleFunc /")
+		log.Println("HandleFunc /")
 
 		// 이미 다운 중이면, 다운 중인 화면을 보여준다.
 		if cfg.State == DOWNLOADING {
-			fmt.Println("alreay downloading. / ")
+			log.Println("alreay downloading. / ")
 			w.Write([]byte(HtmlDownload()))
 			return
 		}
@@ -80,18 +80,18 @@ func runServer() {
 	// 다운로드 view
 	http.HandleFunc("/download", func(w http.ResponseWriter, req *http.Request) {
 
-		fmt.Println("HandleFunc /download")
+		log.Println("HandleFunc /download")
 
 		// 이미 다운 중이면, 다운 중인 화면을 보여준다.
 		if cfg.State == DOWNLOADING {
-			fmt.Println("alreay downloading. /download")
+			log.Println("alreay downloading. /download")
 			w.Write([]byte(HtmlDownload()))
 			return
 		}
 
 		err := req.ParseForm()
 		if err != nil {
-			fmt.Printf("req ParseForm %v\n", err)
+			log.Printf("req ParseForm %v\n", err)
 		}
 
 		// 설정 읽기
@@ -102,6 +102,7 @@ func runServer() {
 			Password:    req.PostFormValue("sftp-pwd"),
 			LocalDir:    req.PostFormValue("local-dir"),
 			RemoteFiles: []FileInfo{},
+			LocalFiles:  []FileInfo{},
 			State:       READY,
 		}
 
@@ -111,6 +112,8 @@ func runServer() {
 		cfg.SaveSftp(ConfigFileName)
 
 		cfg.SaveRemoteFiles(ListFileName)
+
+		remoteFileCheck()
 
 		// local dir 계산
 		cfg.SetLocalFiles()
@@ -123,16 +126,20 @@ func runServer() {
 	// 상태 전송을 위한
 	http.HandleFunc("/downloading", func(w http.ResponseWriter, req *http.Request) {
 
-		fmt.Println("HandleFunc /downloading")
+		log.Println("HandleFunc /downloading")
 
 		w.Header().Add("Content-Type", "application/json")
 
-		w.Write([]byte(getState()))
+		buf := getState()
+
+		//log.Println(buf)
+
+		w.Write([]byte(buf))
 	})
 
 	err := http.ListenAndServe(":"+AppPort, nil)
 	if err != nil {
-		fmt.Println(err)
+		log.Println(err)
 	}
 }
 
@@ -146,11 +153,7 @@ func waitListen(port string) bool {
 	return true
 }
 
-func startDownload() {
-
-	cfg.State = DOWNLOADING
-
-	var wait sync.WaitGroup
+func remoteFileCheck() {
 
 	for i, file := range cfg.RemoteFiles {
 
@@ -160,24 +163,44 @@ func startDownload() {
 			if strings.HasPrefix(err.Error(), "fail to connect") {
 				panic(err)
 			}
-			fmt.Println(err)
+			log.Println(err)
 		} else {
 
 			cfg.RemoteFiles[i].date = date
 			cfg.RemoteFiles[i].size = size
-
-			wait.Add(1)
-			// download
-			go func(i int) {
-				SftpDown(cfg, cfg.RemoteFiles[i].path, cfg.LocalFiles[i].path)
-				wait.Done()
-			}(i)
+			cfg.RemoteFiles[i].isExists = true
 		}
+
+		log.Println(cfg.RemoteFiles[i])
+	}
+}
+
+func startDownload() {
+
+	cfg.State = DOWNLOADING
+
+	log.Println("start downloand")
+
+	var wait sync.WaitGroup
+
+	for i := range cfg.RemoteFiles {
+
+		wait.Add(1)
+		// download
+		go func(i int) {
+			err := SftpDown(cfg, cfg.RemoteFiles[i].path, cfg.LocalFiles[i].path)
+			if err != nil {
+				log.Println(err)
+			}
+			wait.Done()
+		}(i)
 	}
 
 	wait.Wait()
 
 	cfg.State = DONE
+
+	log.Println("end downloand")
 }
 
 func getState() string {
@@ -193,28 +216,43 @@ func getState() string {
 	}
 
 	for i := range cfg.RemoteFiles {
+
 		downFile := DownFile{
-			path:       cfg.RemoteFiles[i].path,
-			remoteSize: cfg.RemoteFiles[i].size,
-			localSize:  getFileSize(cfg.LocalFiles[i].path),
+			Path:       cfg.RemoteFiles[i].path,
+			RemoteSize: cfg.RemoteFiles[i].size,
+		}
+
+		if !cfg.RemoteFiles[i].isExists {
+			downFile.Notify = "The system cannot find the file specified. remote"
+		} else {
+			size, err := getFileSize(cfg.LocalFiles[i].path)
+			if err != nil {
+				downFile.LocalSize = 0
+				downFile.Notify = err.Error()
+			} else {
+				downFile.LocalSize = size
+			}
 		}
 
 		stat.DownFiles = append(stat.DownFiles, downFile)
 	}
 
-	buf, err := stat.MarshalJSON()
+	//	log.Printf("stat: %v\n", stat)
+
+	buf, err := stat.ToJSON()
 	if err != nil {
-		fmt.Printf("fail stat to json %v, %s", stat, err)
+		log.Printf("fail stat to json %v, %s", stat, err)
 	}
 
 	return string(buf)
 }
 
-func getFileSize(path string) int64 {
+func getFileSize(path string) (int64, error) {
 	fi, err := os.Stat(path)
 	if err != nil {
-		fmt.Printf("fail stat fileinfo %s, %s", path, err)
+		log.Printf("fail stat fileinfo %s, %s", path, err)
+		return 0, err
 	}
 
-	return fi.Size()
+	return fi.Size(), nil
 }
