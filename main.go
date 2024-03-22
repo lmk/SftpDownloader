@@ -231,6 +231,7 @@ func getState() string {
 				downFile.Notify = err.Error()
 			} else {
 				downFile.LocalSize = size
+				downFile.Notify = ""
 			}
 		}
 
