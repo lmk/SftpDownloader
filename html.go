@@ -144,16 +144,18 @@ const HTML_DOWNLOAD = `
 					result.files.forEach((file, index)=>{
 
 						clocks = ["🕛", "🕐","🕑","🕒","🕓","🕔","🕕","🕖","🕗","🕘", "🕙", "🕚" ]
+
+						objDanger = $('[id="'+file.path+'"]').children('td[name="path"]').children(".text-danger")
 			
-						if (typeof file.notify == "undefined") {
+						if (typeof file.notify == "undefined" || file.notify=="") {
 							ch = ""
 							idx = file.localSize / file.remoteSize * (clocks.length-1)
 							per = Math.round(file.localSize / file.remoteSize * 100)
 			
-							if (isNaN(idx)) {
-								ch = clocks[0]
-							} else if (file.remoteSize == 0) {
+							if (file.remoteSize == 0) {
 								ch = '❌'
+							} else if (isNaN(idx)) {
+								ch = clocks[0]
 							} else if (file.localSize == file.remoteSize) {
 								ch = '✔'
 							} else {
@@ -169,20 +171,20 @@ const HTML_DOWNLOAD = `
 							} else {
 								$('[id="'+file.path+'"]').children('td[name="path"]').children(".progress").css("width", Math.round(file.localSize / file.remoteSize * 100) + "%%")
 							}
+
+							$(objDanger).remove();
 			
 						} else {
-							obj = $('[id="'+file.path+'"]').children('td[name="path"]').children(".text-danger")
-			
-							if (obj.length == 0) {
+							if (objDanger.length == 0) {
 								html = '<div class="text-danger">'+file.notify+'</div>'
 								$('[id="'+file.path+'"]').children('td[name="path"]').append(html)
 							} else {
-								$(obj).children("div").text(file.notify)
+								$(objDanger).children("div").text(file.notify)
 							}
 						}
 					})
 
-					if (result.stat != "DOWNLOADING") {
+					if (result.stat == "READY" || result.stat == "DONE") {
 						clearInterval(x)
 						return
 					} 
@@ -213,23 +215,22 @@ const HTML_DOWNLOAD_ROW = `
 func HtmlRoot() string {
 	return fmt.Sprintf(HTML_ROOT,
 		AppPort,
-		cfg.Ip,
-		cfg.Id,
-		cfg.Password,
-		cfg.LocalDir,
-		FilesPathToString(cfg.RemoteFiles))
+		downInfo.Ip,
+		downInfo.Id,
+		downInfo.Password,
+		downInfo.LocalDir,
+		downInfo.RemoteFilesString())
 }
 
 func HtmlDownload() string {
 
 	html := ""
-	for i, file := range cfg.RemoteFiles {
-		if file.isExists {
-			html += fmt.Sprintf(HTML_DOWNLOAD_ROW, file.path, i+1, "✔", file.path, file.date)
+	for i, file := range downInfo.Files {
+		if file.Remote.IsExist {
+			html += fmt.Sprintf(HTML_DOWNLOAD_ROW, file.Remote.Path, i+1, "✔", file.Remote.Path, file.Remote.Date)
 		} else {
-			html += fmt.Sprintf(HTML_DOWNLOAD_ROW, file.path, i+1, "❌", file.path, file.date)
+			html += fmt.Sprintf(HTML_DOWNLOAD_ROW, file.Remote.Path, i+1, "❌", file.Remote.Path, file.Remote.Date)
 		}
-
 	}
 
 	return fmt.Sprintf(HTML_DOWNLOAD, html, AppPort)

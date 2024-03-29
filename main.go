@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"net"
 	"net/http"
@@ -8,11 +9,10 @@ import (
 	"os/exec"
 	"runtime"
 	"strings"
-	"sync"
 	"time"
 )
 
-var cfg Config
+var downInfo DownInfo
 
 const (
 	AppPort        = "8888"
@@ -22,10 +22,8 @@ const (
 
 func main() {
 
-	cfg = Config{
-		State:       READY,
-		RemoteFiles: []FileInfo{},
-		LocalFiles:  []FileInfo{},
+	downInfo = DownInfo{
+		State: READY,
 	}
 
 	go runServer()
@@ -62,17 +60,17 @@ func runServer() {
 		log.Println("HandleFunc /")
 
 		// 이미 다운 중이면, 다운 중인 화면을 보여준다.
-		if cfg.State == DOWNLOADING {
+		if downInfo.State == DOWNLOADING || downInfo.State == PREPAREDOWN {
 			log.Println("alreay downloading. / ")
 			w.Write([]byte(HtmlDownload()))
 			return
 		}
 
 		// read yaml
-		cfg.LoadSftp(ConfigFileName)
+		downInfo.LoadSftp(ConfigFileName)
 
 		// read files list
-		cfg.LoadRemoteFiles(ListFileName)
+		downInfo.LoadRemoteFiles(ListFileName)
 
 		w.Write([]byte(HtmlRoot()))
 	})
@@ -83,7 +81,7 @@ func runServer() {
 		log.Println("HandleFunc /download")
 
 		// 이미 다운 중이면, 다운 중인 화면을 보여준다.
-		if cfg.State == DOWNLOADING {
+		if downInfo.State == DOWNLOADING || downInfo.State == PREPAREDOWN {
 			log.Println("alreay downloading. /download")
 			w.Write([]byte(HtmlDownload()))
 			return
@@ -95,28 +93,24 @@ func runServer() {
 		}
 
 		// 설정 읽기
-		cfg = Config{
-			Ip:          req.PostFormValue("sftp-addr"),
-			Port:        22,
-			Id:          req.PostFormValue("sftp-id"),
-			Password:    req.PostFormValue("sftp-pwd"),
-			LocalDir:    req.PostFormValue("local-dir"),
-			RemoteFiles: []FileInfo{},
-			LocalFiles:  []FileInfo{},
-			State:       READY,
+		downInfo = DownInfo{
+			State:        READY,
+			Ip:           req.PostFormValue("sftp-addr"),
+			Port:         22,
+			Id:           req.PostFormValue("sftp-id"),
+			Password:     req.PostFormValue("sftp-pwd"),
+			LocalDir:     req.PostFormValue("local-dir"),
+			SessionCount: 10,
+			OverWrite:    true,
+			Files:        []File{},
 		}
 
-		cfg.SetRemoteFiles(req.PostFormValue("file-list"))
+		downInfo.SetRemoteFiles(req.PostFormValue("file-list"))
 
 		// 설정 저장
-		cfg.SaveSftp(ConfigFileName)
+		downInfo.SaveSftp(ConfigFileName)
 
-		cfg.SaveRemoteFiles(ListFileName)
-
-		remoteFileCheck()
-
-		// local dir 계산
-		cfg.SetLocalFiles()
+		downInfo.SaveRemoteFiles(ListFileName)
 
 		w.Write([]byte(HtmlDownload()))
 
@@ -132,7 +126,7 @@ func runServer() {
 
 		buf := getState()
 
-		//log.Println(buf)
+		log.Println(buf)
 
 		w.Write([]byte(buf))
 	})
@@ -153,12 +147,26 @@ func waitListen(port string) bool {
 	return true
 }
 
+// 원격 파일 상태 체크
 func remoteFileCheck() {
 
-	for i, file := range cfg.RemoteFiles {
+	sft, ssh, err := SftpConnect(downInfo.Addr(), downInfo.Id, downInfo.Password)
+	if err != nil {
+		panic(err)
+	}
+	defer func() {
+		sft.Close()
+		ssh.Close()
+	}()
+
+	for i, file := range downInfo.Files {
+
+		if file.Duplicate {
+			continue
+		}
 
 		// ftp 서버의 파일
-		date, size, err := SftpGetFileInfo(cfg, file.path)
+		date, size, err := SftpGetFileInfo(sft, file.Remote.Path)
 		if err != nil {
 			if strings.HasPrefix(err.Error(), "fail to connect") {
 				panic(err)
@@ -166,39 +174,83 @@ func remoteFileCheck() {
 			log.Println(err)
 		} else {
 
-			cfg.RemoteFiles[i].date = date
-			cfg.RemoteFiles[i].size = size
-			cfg.RemoteFiles[i].isExists = true
+			downInfo.Files[i].Remote.Date = date
+			downInfo.Files[i].Remote.Size = size
+			downInfo.Files[i].Remote.IsExist = true
 		}
 
-		log.Println(cfg.RemoteFiles[i])
+		log.Println(downInfo.Files[i].Remote)
+	}
+}
+
+func localFileCheck() {
+	for i, file := range downInfo.Files {
+
+		if !file.Remote.IsExist || file.Duplicate {
+			continue
+		}
+
+		size, err := getFileSize(file.Local.Path)
+		if err != nil {
+			fmt.Printf("ERROR! %v", err)
+		}
+
+		// 다운받을 파일이 이미 있는 경우
+		if size == file.Remote.Size && !downInfo.OverWrite {
+			downInfo.Files[i].Skip = true
+		}
 	}
 }
 
 func startDownload() {
 
-	cfg.State = DOWNLOADING
+	log.Println("prepare downloand")
+	downInfo.State = PREPAREDOWN
 
-	log.Println("start downloand")
+	// 중복 체크
+	downInfo.DuplicateCheck()
 
-	var wait sync.WaitGroup
+	// 원격 파일 체크
+	remoteFileCheck()
 
-	for i := range cfg.RemoteFiles {
+	// 다운받을 local dir 계산
+	downInfo.SetLocalFiles()
 
-		wait.Add(1)
-		// download
-		go func(i int) {
-			err := SftpDown(cfg, cfg.RemoteFiles[i].path, cfg.LocalFiles[i].path)
-			if err != nil {
-				log.Println(err)
-			}
-			wait.Done()
-		}(i)
+	// 이미 다운 받은 파일이 있는지 체크
+	localFileCheck()
+
+	if downInfo.SessionCount == 0 || downInfo.SessionCount > downInfo.VaildFilesCount() {
+		downInfo.SessionCount = downInfo.VaildFilesCount()
 	}
 
-	wait.Wait()
+	// 채널, 세션 풀 생성
+	ch := make(chan *DownPath, 100)
+	defer close(ch)
 
-	cfg.State = DONE
+	// 대기열에 넣기 시작
+	go func(ch chan<- *DownPath) {
+		for _, file := range downInfo.Files {
+
+			if !file.Remote.IsExist || file.Duplicate {
+				continue
+			}
+
+			downInfo := DownPath{
+				remotePath: file.Remote.Path,
+				localPath:  file.Local.Path,
+			}
+
+			ch <- &downInfo
+		}
+	}(ch)
+
+	log.Println("start downloand")
+	downInfo.State = DOWNLOADING
+
+	// 대기열 전송 시작
+	CreateSessons(downInfo.SessionCount, downInfo.Addr(), downInfo.Id, downInfo.Password, ch)
+
+	downInfo.State = DONE
 
 	log.Println("end downloand")
 }
@@ -207,31 +259,46 @@ func getState() string {
 
 	stat := DownStat{}
 
-	if cfg.State == DONE {
+	if downInfo.State == DONE {
 		stat.State = "DONE"
-	} else if cfg.State == DOWNLOADING {
+	} else if downInfo.State == PREPAREDOWN {
+		stat.State = "PREPARE DOWNLOAD"
+	} else if downInfo.State == DOWNLOADING {
 		stat.State = "DOWNLOADING"
 	} else {
 		stat.State = "READY"
 	}
 
-	for i := range cfg.RemoteFiles {
+	for _, file := range downInfo.Files {
 
 		downFile := DownFile{
-			Path:       cfg.RemoteFiles[i].path,
-			RemoteSize: cfg.RemoteFiles[i].size,
+			Path:       file.Remote.Path,
+			RemoteSize: file.Remote.Size,
 		}
 
-		if !cfg.RemoteFiles[i].isExists {
-			downFile.Notify = "The system cannot find the file specified. remote"
+		if downInfo.State == READY || downInfo.State == PREPAREDOWN {
+
+			// 다운로드 전
+
+			downFile.LocalSize = 0
+			downFile.Notify = ""
 		} else {
-			size, err := getFileSize(cfg.LocalFiles[i].path)
-			if err != nil {
-				downFile.LocalSize = 0
-				downFile.Notify = err.Error()
+			// 다운로드 중
+			if file.Skip {
+				if !file.Remote.IsExist {
+					downFile.Notify = "The system cannot find the file specified. remote"
+				} else if file.Duplicate {
+					downFile.Notify = "Duplicate file."
+				}
 			} else {
-				downFile.LocalSize = size
-				downFile.Notify = ""
+				size, err := getFileSize(file.Local.Path)
+				if err != nil {
+					downFile.LocalSize = 0
+					downFile.Notify = err.Error()
+				} else {
+					downFile.LocalSize = size
+					downFile.Notify = ""
+				}
 			}
 		}
 
