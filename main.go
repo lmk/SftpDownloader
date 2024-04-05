@@ -319,6 +319,11 @@ func getFileSize(path string) (int64, error) {
 	fi, err := os.Stat(path)
 	if err != nil {
 		log.Printf("fail stat fileinfo %s, %s", path, err)
+
+		if strings.HasSuffix(err.Error(), "The system cannot find the path specified.") {
+			return 0, fmt.Errorf("%s, The system cannot find the path specified", path)
+		}
+
 		return 0, err
 	}
 
