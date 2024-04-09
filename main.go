@@ -70,6 +70,7 @@ func runServer() {
 		downInfo.LoadSftp(ConfigFileName)
 
 		// read files list
+		downInfo.Files = nil
 		downInfo.LoadRemoteFiles(ListFileName)
 
 		w.Write([]byte(HtmlRoot()))
