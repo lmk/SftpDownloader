@@ -26,14 +26,14 @@ type File struct {
 }
 
 type DownInfo struct {
-	State        Status `yaml:"-"`
 	Ip           string `yaml:"sftp.ip,omitempty"`
 	Port         int    `yaml:"sftp.port,omitempty"`
 	Id           string `yaml:"sftp.id,omitempty"`
 	Password     string `yaml:"sftp.password,omitempty"`
 	LocalDir     string `yaml:"local.directory,omitempty"`
 	SessionCount int    `yaml:"sftp.session-count,omitempty"`
-	OverWrite    bool   `yaml:"sftp.over-write,omitempty"`
+	OverWrite    *bool  `yaml:"sftp.over-write,omitempty"`
+	State        Status `yaml:"-"`
 	Files        []File `yaml:"-"`
 }
 
