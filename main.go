@@ -258,6 +258,10 @@ func startDownload() {
 	downInfo.State = DONE
 
 	log.Println("end downloand")
+
+	// exit app
+	time.Sleep(3 * time.Second)
+	os.Exit(0)
 }
 
 func getState() string {
