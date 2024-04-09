@@ -78,7 +78,7 @@ func CreateSessons(count int, addr string, id string, passwd string, ch <-chan *
 	}
 
 	if makedCount == 0 {
-		panic("fail all sftp connect")
+		log.Println("no valid sftp connection.")
 	}
 
 	wait.Wait()

@@ -93,7 +93,9 @@ func runServer() {
 			log.Printf("req ParseForm %v\n", err)
 		}
 
-		// 설정 읽기
+		// 설정 기본값
+		overWrite := new(bool)
+		*overWrite = true
 		downInfo = DownInfo{
 			State:        READY,
 			Ip:           req.PostFormValue("sftp-addr"),
@@ -102,9 +104,11 @@ func runServer() {
 			Password:     req.PostFormValue("sftp-pwd"),
 			LocalDir:     req.PostFormValue("local-dir"),
 			SessionCount: 10,
-			OverWrite:    true,
+			OverWrite:    overWrite,
 			Files:        []File{},
 		}
+
+		downInfo.LoadSftp(ConfigFileName)
 
 		downInfo.SetRemoteFiles(req.PostFormValue("file-list"))
 
@@ -197,7 +201,7 @@ func localFileCheck() {
 		}
 
 		// 다운받을 파일이 이미 있는 경우
-		if size == file.Remote.Size && !downInfo.OverWrite {
+		if size == file.Remote.Size && !(*downInfo.OverWrite) {
 			downInfo.Files[i].Skip = true
 		}
 	}
@@ -232,7 +236,7 @@ func startDownload() {
 	go func(ch chan<- *DownPath) {
 		for _, file := range downInfo.Files {
 
-			if !file.Remote.IsExist || file.Duplicate {
+			if !file.Remote.IsExist || file.Duplicate || file.Skip {
 				continue
 			}
 
@@ -277,7 +281,7 @@ func getState() string {
 			RemoteSize: file.Remote.Size,
 		}
 
-		if downInfo.State == READY || downInfo.State == PREPAREDOWN {
+		if downInfo.State == READY /*|| downInfo.State == PREPAREDOWN*/ {
 
 			// 다운로드 전
 
@@ -285,12 +289,10 @@ func getState() string {
 			downFile.Notify = ""
 		} else {
 			// 다운로드 중
-			if file.Skip {
-				if !file.Remote.IsExist {
-					downFile.Notify = "The system cannot find the file specified. remote"
-				} else if file.Duplicate {
-					downFile.Notify = "Duplicate file."
-				}
+			if !file.Remote.IsExist {
+				downFile.Notify = "The system cannot find the file specified. remote"
+			} else if file.Duplicate {
+				downFile.Notify = "Duplicate file."
 			} else {
 				size, err := getFileSize(file.Local.Path)
 				if err != nil {
