@@ -184,8 +184,14 @@ const HTML_DOWNLOAD = `
 						}
 					})
 
-					if (result.stat == "READY" || result.stat == "DONE") {
+					if (result.stat == "READY") {
 						clearInterval(x)
+						return
+					} 
+
+					if (result.stat == "DONE") {
+						clearInterval(x)
+						setTimeout(() => alert('Download complete!\nPlease, Close this window.'), 1000);
 						return
 					} 
 
