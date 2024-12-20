@@ -26,6 +26,8 @@ func GetSameDir(a string, b string) string {
 	for i := range aa {
 		if aa[i] == bb[i] {
 			common += "/" + aa[i]
+		} else {
+			break
 		}
 	}
 
