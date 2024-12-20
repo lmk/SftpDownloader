@@ -17,6 +17,9 @@ const HTML_ROOT = `
 	<title>Sftp Downloader</title>
 </head>
 <body class="bg-light">
+    <div class="version" style="position: fixed; bottom: 10px; left: 10px; font-size: 12px; color: #888888; z-index: 1000;">
+        %s<br/>%s
+    </div>
 	<div class="container">
 		<div class="py-5 text-center">
 			<h2>Sftp Downloader</h2>
@@ -75,6 +78,9 @@ const HTML_DOWNLOAD = `
     <title>Sftp Downloader</title>
 </head>
 <body class="bg-light">
+    <div class="version" style="position: fixed; bottom: 10px; left: 10px; font-size: 12px; color: #888888; z-index: 1000;">
+        %s<br/>%s
+    </div>
     <div class="container">
         <div class="py-5 text-center">
             <h2>Sftp Downloader</h2>
@@ -220,6 +226,8 @@ const HTML_DOWNLOAD_ROW = `
 
 func HtmlRoot() string {
 	return fmt.Sprintf(HTML_ROOT,
+		GetVersion(),
+		GetBuildDt(),
 		AppPort,
 		downInfo.Ip,
 		downInfo.Id,
@@ -239,5 +247,5 @@ func HtmlDownload() string {
 		}
 	}
 
-	return fmt.Sprintf(HTML_DOWNLOAD, html, AppPort)
+	return fmt.Sprintf(HTML_DOWNLOAD, GetVersion(), GetBuildDt(), html, AppPort)
 }

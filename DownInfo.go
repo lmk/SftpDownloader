@@ -26,15 +26,16 @@ type File struct {
 }
 
 type DownInfo struct {
-	Ip           string `yaml:"sftp.ip,omitempty"`
-	Port         int    `yaml:"sftp.port,omitempty"`
-	Id           string `yaml:"sftp.id,omitempty"`
-	Password     string `yaml:"sftp.password,omitempty"`
-	LocalDir     string `yaml:"local.directory,omitempty"`
-	SessionCount int    `yaml:"sftp.session-count,omitempty"`
-	OverWrite    *bool  `yaml:"sftp.over-write,omitempty"`
-	State        Status `yaml:"-"`
-	Files        []File `yaml:"-"`
+	Ip             string `yaml:"sftp.ip,omitempty"`
+	Port           int    `yaml:"sftp.port,omitempty"`
+	Id             string `yaml:"sftp.id,omitempty"`
+	Password       string `yaml:"sftp.password,omitempty"`
+	LocalDir       string `yaml:"local.directory,omitempty"`
+	LocalDirOption string `yaml:"local.dir-option,omitempty"`
+	SessionCount   int    `yaml:"sftp.session-count,omitempty"`
+	OverWrite      *bool  `yaml:"sftp.over-write,omitempty"`
+	State          Status `yaml:"-"`
+	Files          []File `yaml:"-"`
 }
 
 // Sftp 설정 파일을 읽는다.
@@ -160,7 +161,14 @@ func (info *DownInfo) SetLocalFiles() {
 
 	for i, file := range info.Files {
 
-		path := info.LocalDir + "/" + strings.TrimPrefix(file.Remote.Path, common)
+		path := ""
+		// switch info.LocalDirOption {
+		// case "same-local": // retmoe 경로에서 LocalDir 과 동일한 경로를 찾아서 이하 dir을 생성하여 각 dir에 다운로드
+		// 	path = info.LocalDir + "/" + strings.TrimPrefix(file.Remote.Path, common)
+		// case "smart": // remote에서 공통 경로를 찾아서 localDir에 공통 경로 이하 dir을 생성하여 각 dir에 다운로드
+		// default:
+		path = info.LocalDir + "/" + strings.TrimPrefix(file.Remote.Path, common)
+		// }
 
 		// local 디렉토리 구분자로 변경
 		info.Files[i].Local.Path = strings.ReplaceAll(path, "/", string(os.PathSeparator))
